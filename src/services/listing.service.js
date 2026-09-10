@@ -57,7 +57,19 @@ const formatDateRange = (checkIn, checkOut) => {
 
 class ListingService {
   static async getAllListings(queryParamsData) {
-    const { category_id, city, min_price, max_price, guests, check_in, check_out, page = 1, limit = 12 } = queryParamsData;
+    console.log('LISTINGS QUERY:', queryParamsData);
+    const {
+  category_id,
+  city,
+  min_price,
+  max_price,
+  guests,
+  check_in,
+  check_out,
+  flexible_days = 0,
+  page = 1,
+  limit = 12
+} = queryParamsData;
     const offset = (page - 1) * limit;
 
     let queryText = `
@@ -97,29 +109,56 @@ class ListingService {
     }
 
     if (check_in && check_out) {
-      queryParams.push(check_in, check_out);
+      queryParams.push(
+        check_in,
+        check_out,
+        Number(flexible_days) || 0
+      )
 
-      const checkInParam = queryParams.length - 1;
-      const checkOutParam = queryParams.length;
+      const checkInParam = queryParams.length - 2
+      const checkOutParam = queryParams.length - 1
+      const flexibleDaysParam = queryParams.length
 
       queryText += `
-        AND l.available_from <= $${checkInParam}
-        AND l.available_to >= $${checkOutParam}
+        AND EXISTS (
+          SELECT 1
+          FROM generate_series(
+            0 - $${flexibleDaysParam}::int,
+            $${flexibleDaysParam}::int
+          ) AS shift(days)
 
-        AND l.id NOT IN (
-          SELECT listing_id
-          FROM bookings
-          WHERE status != 'cancelled'
-            AND (
-              check_in < $${checkOutParam}
-              AND check_out > $${checkInParam}
+          WHERE
+            l.available_from <= (
+              $${checkInParam}::date + shift.days
+            )
+
+            AND l.available_to >= (
+              $${checkOutParam}::date + shift.days
+            )
+
+            AND NOT EXISTS (
+              SELECT 1
+              FROM bookings b
+              WHERE b.listing_id = l.id
+                AND b.status != 'cancelled'
+
+                AND b.check_in < (
+                  $${checkOutParam}::date + shift.days
+                )
+
+                AND b.check_out > (
+                  $${checkInParam}::date + shift.days
+                )
             )
         )
-      `;
+      `
     }
 
     queryText += ` GROUP BY l.id, c.name ORDER BY l.created_at DESC LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}`;
     queryParams.push(limit, offset);
+
+     console.log('SQL PARAMS:', queryParams);
+      console.log('SQL:', queryText);
 
     const result = await db.query(queryText, queryParams);
 
