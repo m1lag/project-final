@@ -1,5 +1,60 @@
 const db = require('../config/db');
 
+const formatDateRange = (checkIn, checkOut) => {
+  if (!checkIn || !checkOut) {
+    return null;
+  }
+
+  const months = [
+    'січня',
+    'лютого',
+    'березня',
+    'квітня',
+    'травня',
+    'червня',
+    'липня',
+    'серпня',
+    'вересня',
+    'жовтня',
+    'листопада',
+    'грудня'
+  ];
+
+  const getDateParts = (value) => {
+    if (value instanceof Date) {
+      return {
+        year: value.getUTCFullYear(),
+        month: value.getUTCMonth() + 1,
+        day: value.getUTCDate()
+      };
+    }
+
+    const [year, month, day] = String(value)
+      .split('T')[0]
+      .split('-')
+      .map(Number);
+
+    return { year, month, day };
+  };
+
+  const from = getDateParts(checkIn);
+  const to = getDateParts(checkOut);
+
+  if (
+    !from.year || !from.month || !from.day ||
+    !to.year || !to.month || !to.day
+  ) {
+    return null;
+  }
+
+  if (from.month === to.month && from.year === to.year) {
+    return `${from.day}-${to.day} ${months[from.month - 1]}`;
+  }
+
+  return `${from.day} ${months[from.month - 1]} - ${to.day} ${months[to.month - 1]}`;
+};
+
+
 class ListingService {
   static async getAllListings(queryParamsData) {
     const { category_id, city, min_price, max_price, guests, check_in, check_out, page = 1, limit = 12 } = queryParamsData;
@@ -43,11 +98,22 @@ class ListingService {
 
     if (check_in && check_out) {
       queryParams.push(check_in, check_out);
+
+      const checkInParam = queryParams.length - 1;
+      const checkOutParam = queryParams.length;
+
       queryText += `
+        AND l.available_from <= $${checkInParam}
+        AND l.available_to >= $${checkOutParam}
+
         AND l.id NOT IN (
-          SELECT listing_id FROM bookings 
+          SELECT listing_id
+          FROM bookings
           WHERE status != 'cancelled'
-          AND (check_in < $${queryParams.length} AND check_out > $${queryParams.length - 1})
+            AND (
+              check_in < $${checkOutParam}
+              AND check_out > $${checkInParam}
+            )
         )
       `;
     }
@@ -56,7 +122,14 @@ class ListingService {
     queryParams.push(limit, offset);
 
     const result = await db.query(queryText, queryParams);
-    return result.rows;
+
+    return result.rows.map((listing) => ({
+      ...listing,
+      date_range: formatDateRange(
+        listing.available_from,
+        listing.available_to
+      )
+    }));
   }
 
   static async getListingById(id) {
