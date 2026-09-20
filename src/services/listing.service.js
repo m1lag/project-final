@@ -55,10 +55,12 @@ const formatDateRange = (checkIn, checkOut) => {
 };
 
 
-class ListingService {
-  static async getAllListings(queryParamsData) {
+class ListingService 
+{
+  static async getAllListings(queryParamsData) 
+  {
     console.log('LISTINGS QUERY:', queryParamsData);
-    const {
+  const {
   category_id,
   city,
   min_price,
@@ -67,6 +69,14 @@ class ListingService {
   check_in,
   check_out,
   flexible_days = 0,
+
+  region,
+
+  property_type,
+  min_bedrooms,
+  min_beds,
+  amenities,
+
   page = 1,
   limit = 12
 } = queryParamsData;
@@ -84,8 +94,27 @@ class ListingService {
     const queryParams = [];
 
     if (category_id) {
-      queryParams.push(category_id);
-      queryText += ` AND l.category_id = $${queryParams.length}`;
+      const categoryIds = String(category_id)
+        .split(',')
+        .map(Number)
+        .filter((id) => Number.isInteger(id))
+
+      if (categoryIds.length > 0) {
+        const placeholders = categoryIds
+          .map((_, index) => `$${queryParams.length + index + 1}`)
+          .join(', ')
+
+        queryParams.push(...categoryIds)
+
+        queryText += `
+          AND l.category_id IN (${placeholders})
+        `
+      }
+    }
+
+    if (region && region !== 'all') {
+      queryParams.push(region);
+      queryText += ` AND l.region_id = $${queryParams.length}`;
     }
 
     if (city) {
@@ -106,6 +135,48 @@ class ListingService {
     if (guests) {
       queryParams.push(guests);
       queryText += ` AND l.max_guests >= $${queryParams.length}`;
+    }
+
+    if (property_type) {
+      const propertyTypes = String(property_type)
+        .split(',')
+        .map((type) => type.trim())
+        .filter(Boolean);
+
+      if (propertyTypes.length > 0) {
+        queryParams.push(propertyTypes);
+
+        queryText += `
+          AND l.property_type = ANY(
+            $${queryParams.length}::text[]
+          )
+        `;
+      }
+    }
+
+    if (min_bedrooms) {
+      queryParams.push(min_bedrooms);
+      queryText += ` AND l.bedrooms >= $${queryParams.length}`;
+    }
+
+    if (min_beds) {
+      queryParams.push(min_beds);
+      queryText += ` AND l.beds >= $${queryParams.length}`;
+    }
+
+    if (amenities) {
+      const amenitiesList = String(amenities)
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+      if (amenitiesList.length > 0) {
+        queryParams.push(amenitiesList);
+
+        queryText += `
+          AND l.amenities ?| $${queryParams.length}
+        `;
+      }
     }
 
     if (check_in && check_out) {
