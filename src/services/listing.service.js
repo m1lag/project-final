@@ -77,6 +77,8 @@ class ListingService
   min_beds,
   amenities,
 
+  sort = 'recommended',
+
   page = 1,
   limit = 12
 } = queryParamsData;
@@ -84,8 +86,9 @@ class ListingService
 
     let queryText = `
       SELECT l.*, c.name as category_name,
-             COALESCE(ROUND(AVG(r.rating), 1), 0) as rating,
-             COUNT(r.id)::int as reviews_count
+              COALESCE(ROUND(AVG(r.rating), 1), 0) as rating,
+              COUNT(r.id)::int as reviews_count,
+              COUNT(*) OVER()::int as total_count
       FROM listings l
       LEFT JOIN categories c ON l.category_id = c.id
       LEFT JOIN reviews r ON l.id = r.listing_id
@@ -225,7 +228,22 @@ class ListingService
       `
     }
 
-    queryText += ` GROUP BY l.id, c.name ORDER BY l.created_at DESC LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}`;
+    let orderBy = 'l.created_at DESC';
+
+    if (sort === 'price_asc') {
+      orderBy = 'l.price_per_night ASC';
+    }
+
+    if (sort === 'price_desc') {
+      orderBy = 'l.price_per_night DESC';
+    }
+
+    queryText += `
+      GROUP BY l.id, c.name
+      ORDER BY ${orderBy}
+      LIMIT $${queryParams.length + 1}
+      OFFSET $${queryParams.length + 2}
+    `;
     queryParams.push(limit, offset);
 
      console.log('SQL PARAMS:', queryParams);
@@ -233,13 +251,22 @@ class ListingService
 
     const result = await db.query(queryText, queryParams);
 
-    return result.rows.map((listing) => ({
+    const listings = result.rows.map((listing) => ({
       ...listing,
       date_range: formatDateRange(
         listing.available_from,
         listing.available_to
       )
     }));
+
+    const total = result.rows.length > 0
+      ? result.rows[0].total_count
+      : 0;
+
+    return {
+      listings,
+      total
+    };
   }
 
   static async getListingById(id) {
