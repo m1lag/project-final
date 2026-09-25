@@ -270,44 +270,102 @@ class ListingService
   }
 
   static async getListingById(id) {
-    const listingResult = await db.query(
-      `SELECT 
-        l.*, 
-        c.name as category_name,
-        u.first_name as host_name,
-        u.avatar_url as host_avatar,
-        u.created_at as host_joined,
-        u.is_identity_verified as host_verified,
-        COALESCE(ROUND(AVG(r.rating), 1), 0) as rating,
-        COUNT(r.id)::int as reviews_count
-       FROM listings l
-       LEFT JOIN categories c ON l.category_id = c.id
-       LEFT JOIN users u ON l.host_id = u.id
-       LEFT JOIN reviews r ON l.id = r.listing_id
-       WHERE l.id = $1
-       GROUP BY l.id, c.name, u.id`,
-      [id]
-    );
+  const listingResult = await db.query(
+    `
+      SELECT
+        l.*,
 
-    if (listingResult.rows.length === 0) {
-      return null;
-    }
+        c.name AS category_name,
 
-    const reviewsResult = await db.query(
-      `SELECT r.*, u.first_name, u.avatar_url 
-       FROM reviews r
-       JOIN users u ON r.user_id = u.id
-       WHERE r.listing_id = $1
-       ORDER BY r.created_at DESC
-       LIMIT 6`,
-      [id]
-    );
+        u.id AS host_id,
+        u.first_name AS host_first_name,
+        u.last_name AS host_last_name,
+        u.avatar_url AS host_avatar,
+        u.bio AS host_bio,
+        u.created_at AS host_joined,
+        u.is_host AS host_is_host,
+        u.is_identity_verified AS host_verified,
+        u.is_email_verified AS host_email_verified,
+        u.verification_status AS host_verification_status,
 
-    const listing = listingResult.rows[0];
-    listing.reviews = reviewsResult.rows;
+        COALESCE(
+          ROUND(AVG(r.rating), 1),
+          0
+        ) AS rating,
 
-    return listing;
+        COUNT(r.id)::int AS reviews_count
+
+      FROM listings l
+
+      LEFT JOIN categories c
+        ON l.category_id = c.id
+
+      LEFT JOIN users u
+        ON l.host_id = u.id
+
+      LEFT JOIN reviews r
+        ON l.id = r.listing_id
+
+      WHERE l.id = $1
+
+      GROUP BY
+        l.id,
+        c.name,
+        u.id
+    `,
+    [id]
+  )
+
+  if (listingResult.rows.length === 0) {
+    return null
   }
+
+  const bookingsResult = await db.query(
+  `
+    SELECT
+      check_in,
+      check_out
+    FROM bookings
+    WHERE listing_id = $1
+      AND status != 'cancelled'
+    ORDER BY check_in
+  `,
+  [id]
+)
+
+  const reviewsResult = await db.query(
+  `
+    SELECT
+      r.id,
+      r.rating,
+      r.comment,
+      r.created_at,
+
+      u.id AS user_id,
+      u.first_name,
+      u.last_name,
+      u.avatar_url
+
+    FROM reviews r
+
+    LEFT JOIN users u
+      ON r.user_id = u.id
+
+    WHERE r.listing_id = $1
+
+    ORDER BY r.created_at DESC
+  `,
+  [id]
+)
+
+  const listing = listingResult.rows[0]
+
+  listing.reviews = reviewsResult.rows
+
+  listing.bookings = bookingsResult.rows
+
+  return listing
+}
 
   static async createListing(data, hostId) {
     const { 
