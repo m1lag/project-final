@@ -22,6 +22,34 @@ const register = async (req, res) => {
   }
 };
 
+const uploadAvatar = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        error: 'Файл зображення не вибрано',
+      })
+    }
+
+    const avatarUrl =
+      `${req.protocol}://${req.get('host')}/uploads/avatars/${req.file.filename}`
+
+    const user = await AuthService.updateUserProfile(
+      req.user.id,
+      {
+        avatar_url: avatarUrl,
+      }
+    )
+
+    return res.json(user)
+  } catch (error) {
+    console.error('UPLOAD AVATAR ERROR:', error)
+
+    return res.status(500).json({
+      error: 'Не вдалося завантажити фотографію',
+    })
+  }
+}
+
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -71,5 +99,6 @@ module.exports = {
   register, 
   login, 
   getMe,
-  updateProfile
+  updateProfile,
+  uploadAvatar,
 };

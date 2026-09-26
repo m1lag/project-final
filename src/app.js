@@ -14,9 +14,17 @@ const experienceRoutes = require('./routes/experiences.routes');
 const errorMiddleware = require('./middleware/error.middleware');
 
 const app = express();
+const path = require('path')
 
 app.use(cors());
 app.use(express.json());
+
+app.use(
+  '/uploads',
+  express.static(
+    path.join(process.cwd(), 'uploads')
+  )
+)
 
 app.use('/api/categories', categoryRoutes);
 app.use('/api/listings', listingRoutes);

@@ -287,6 +287,19 @@ class ListingService
         u.is_identity_verified AS host_verified,
         u.is_email_verified AS host_email_verified,
         u.verification_status AS host_verification_status,
+        up.education AS host_education,
+        up.profession AS host_profession,
+        up.residence AS host_residence,
+        up.languages AS host_languages,
+        up.birth_decade AS host_birth_decade,
+        up.favorite_song AS host_favorite_song,
+        up.biggest_hobby AS host_biggest_hobby,
+        up.interesting_fact AS host_interesting_fact,
+        up.useless_skills AS host_useless_skills,
+        up.bio_title AS host_bio_title,
+        up.time_spent AS host_time_spent,
+        up.pets AS host_pets,
+        up.favorite_interests AS host_favorite_interests,
 
         COALESCE(
           ROUND(AVG(r.rating), 1),
@@ -303,6 +316,9 @@ class ListingService
       LEFT JOIN users u
         ON l.host_id = u.id
 
+      LEFT JOIN user_profiles up
+        ON up.user_id = u.id
+
       LEFT JOIN reviews r
         ON l.id = r.listing_id
 
@@ -311,7 +327,8 @@ class ListingService
       GROUP BY
         l.id,
         c.name,
-        u.id
+        u.id,
+        up.user_id
     `,
     [id]
   )
